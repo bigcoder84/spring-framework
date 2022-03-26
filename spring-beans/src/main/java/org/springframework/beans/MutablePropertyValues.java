@@ -170,13 +170,17 @@ public class MutablePropertyValues implements PropertyValues, Serializable {
 	 */
 	public MutablePropertyValues addPropertyValue(PropertyValue pv) {
 		for (int i = 0; i < this.propertyValueList.size(); i++) {
+			// 匹配
 			PropertyValue currentPv = this.propertyValueList.get(i);
 			if (currentPv.getName().equals(pv.getName())) {
+				// 合并属性
 				pv = mergeIfRequired(pv, currentPv);
+				// 覆盖属性
 				setPropertyValueAt(pv, i);
 				return this;
 			}
 		}
+		// 未匹配到，添加到 propertyValueList 中
 		this.propertyValueList.add(pv);
 		return this;
 	}

@@ -90,6 +90,7 @@ public class DefaultSingletonBeanRegistryTests {
 		beanRegistry.registerDependentBean("a", "b");
 		beanRegistry.registerDependentBean("b", "c");
 		beanRegistry.registerDependentBean("c", "b");
+
 		assertThat(beanRegistry.isDependent("a", "b")).isTrue();
 		assertThat(beanRegistry.isDependent("b", "c")).isTrue();
 		assertThat(beanRegistry.isDependent("c", "b")).isTrue();
@@ -100,5 +101,4 @@ public class DefaultSingletonBeanRegistryTests {
 		assertThat(beanRegistry.isDependent("b", "b")).isTrue();
 		assertThat(beanRegistry.isDependent("c", "c")).isTrue();
 	}
-
 }

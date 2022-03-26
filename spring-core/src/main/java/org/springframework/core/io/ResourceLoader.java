@@ -46,6 +46,8 @@ public interface ResourceLoader {
 
 
 	/**
+	 * 根据所提供资源的路径 location 返回 Resource 实例，
+	 * 但是它不确保该 Resource 一定存在，需要调用 Resource#exist() 方法来判断。
 	 * Return a {@code Resource} handle for the specified resource location.
 	 * <p>The handle should always be a reusable resource descriptor,
 	 * allowing for multiple {@link Resource#getInputStream()} calls.
