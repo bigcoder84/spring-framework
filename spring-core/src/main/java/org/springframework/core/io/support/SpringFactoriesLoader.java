@@ -41,6 +41,7 @@ import org.springframework.util.StringUtils;
 
 /**
  * General purpose factory loading mechanism for internal use within the framework.
+ * 用于框架内部使用的通用工厂加载机制。
  *
  * <p>{@code SpringFactoriesLoader} {@linkplain #loadFactories loads} and instantiates
  * factories of a given type from {@value #FACTORIES_RESOURCE_LOCATION} files which
@@ -48,6 +49,11 @@ import org.springframework.util.StringUtils;
  * file must be in {@link Properties} format, where the key is the fully qualified
  * name of the interface or abstract class, and the value is a comma-separated list of
  * implementation class names. For example:
+ *
+ * SpringFactoriesLoader#loadFactories设计用于加载和实例化指定类型的工厂，这些工厂类型的定义
+ * 来自classpath中多个JAR包内常量FACTORIES_RESOURCE_LOCATION所指定的那些spring.factories文件。
+ * spring.factories文件的格式必须是{@link Properties}格式，每条属性的key必须是接口或者抽象类的全限定名，
+ * 而属性值value是一个逗号分割的实现类的名称。
  *
  * <pre class="code">example.MyService=example.MyServiceImpl1,example.MyServiceImpl2</pre>
  *
@@ -64,12 +70,21 @@ public final class SpringFactoriesLoader {
 	/**
 	 * The location to look for factories.
 	 * <p>Can be present in multiple JAR files.
+	 *
+	 * 在classpath中的多个JAR中要扫描的工厂配置文件的在本JAR包中的路径。
+	 * 实际上，Springboot的每个 autoconfigure包都包含一个这样的文件。
 	 */
 	public static final String FACTORIES_RESOURCE_LOCATION = "META-INF/spring.factories";
 
 
 	private static final Log logger = LogFactory.getLog(SpringFactoriesLoader.class);
 
+	/**
+	 * 缓存，在 loadFactoryNames 首次被调用时，所有jar包中的 META-INF/spring.factories
+	 * 文件内容都会被加载，然后缓存在 cache 中， 注意 cache Map 的 key 是 loadFactoryNames
+	 * 调用时的参数 classLoader, 而 value 是另外一个 Map，其 key 是工厂类的名称,
+	 * 也就是每个 META-INF/spring.factories 属性文件中属性名部分
+	 */
 	static final Map<ClassLoader, Map<String, List<String>>> cache = new ConcurrentReferenceHashMap<>();
 
 
@@ -98,14 +113,17 @@ public final class SpringFactoriesLoader {
 		if (classLoaderToUse == null) {
 			classLoaderToUse = SpringFactoriesLoader.class.getClassLoader();
 		}
+		// 加载类型为factoryClass的工厂的名称，其实是一个个的全限定类名，使用指定的classloader：
 		List<String> factoryImplementationNames = loadFactoryNames(factoryType, classLoaderToUse);
 		if (logger.isTraceEnabled()) {
 			logger.trace("Loaded [" + factoryType.getName() + "] names: " + factoryImplementationNames);
 		}
 		List<T> result = new ArrayList<>(factoryImplementationNames.size());
+		// 实例化所加载的每个工厂类
 		for (String factoryImplementationName : factoryImplementationNames) {
 			result.add(instantiateFactory(factoryImplementationName, factoryType, classLoaderToUse));
 		}
+		// 排序
 		AnnotationAwareOrderComparator.sort(result);
 		return result;
 	}
@@ -129,9 +147,16 @@ public final class SpringFactoriesLoader {
 			classLoaderToUse = SpringFactoriesLoader.class.getClassLoader();
 		}
 		String factoryTypeName = factoryType.getName();
+		// 1. 使用指定的classloader扫描classpath上所有的JAR包中的文件META-INF/spring.factories，加载其中的多值
+		// 工厂属性定义，使用多值Map的形式返回，
+		// 2. 返回多值Map中key为factoryClassName的工厂名称列表，如果没有相应的entry，返回空列表而不是返回null
 		return loadSpringFactories(classLoaderToUse).getOrDefault(factoryTypeName, Collections.emptyList());
 	}
 
+	/**
+	 * 使用指定的classloader扫描classpath上所有的JAR包中的文件META-INF/spring.factories，加载其中的多值
+	 * 工厂属性定义，使用多值Map的形式返回
+	 **/
 	private static Map<String, List<String>> loadSpringFactories(ClassLoader classLoader) {
 		Map<String, List<String>> result = cache.get(classLoader);
 		if (result != null) {
@@ -140,16 +165,26 @@ public final class SpringFactoriesLoader {
 
 		result = new HashMap<>();
 		try {
+			// 扫描classpath上所有JAR中的文件META-INF/spring.factories
 			Enumeration<URL> urls = classLoader.getResources(FACTORIES_RESOURCE_LOCATION);
 			while (urls.hasMoreElements()) {
+				// 找到的每个META-INF/spring.factories文件都是一个Properties文件，将其内容
+				// 加载到一个 Properties 对象然后处理其中的每个属性
 				URL url = urls.nextElement();
+				// url 对应某个 META-INF/spring.factories 配置文件资源
 				UrlResource resource = new UrlResource(url);
+				// properties 来自 url 对应某个 META-INF/spring.factories 配置文件资源
 				Properties properties = PropertiesLoaderUtils.loadProperties(resource);
 				for (Map.Entry<?, ?> entry : properties.entrySet()) {
+					// 获取工厂类名称（接口或者抽象类的全限定名）
 					String factoryTypeName = ((String) entry.getKey()).trim();
+					// 将逗号分割的属性值逐个取出，然后放到多值Map结果result中去。
 					String[] factoryImplementationNames =
 							StringUtils.commaDelimitedListToStringArray((String) entry.getValue());
 					for (String factoryImplementationName : factoryImplementationNames) {
+						// 放到 result 中 :
+						// key 使用 factoryClassName
+						// value 可能有多值, 使用 factoryName
 						result.computeIfAbsent(factoryTypeName, key -> new ArrayList<>())
 								.add(factoryImplementationName.trim());
 					}
@@ -159,6 +194,7 @@ public final class SpringFactoriesLoader {
 			// Replace all lists with unmodifiable lists containing unique elements
 			result.replaceAll((factoryType, implementations) -> implementations.stream().distinct()
 					.collect(Collectors.collectingAndThen(Collectors.toList(), Collections::unmodifiableList)));
+			// 放到缓存中，key 使用 classLoader
 			cache.put(classLoader, result);
 		}
 		catch (IOException ex) {
@@ -168,6 +204,11 @@ public final class SpringFactoriesLoader {
 		return result;
 	}
 
+	/**
+	 * @param factoryImplementationName 工厂实现类全限定名称
+	 * @param factoryType 工厂所属接口/抽象类全限定名称
+	 * @param classLoader 所要使用的类加载器
+	 **/
 	@SuppressWarnings("unchecked")
 	private static <T> T instantiateFactory(String factoryImplementationName, Class<T> factoryType, ClassLoader classLoader) {
 		try {
